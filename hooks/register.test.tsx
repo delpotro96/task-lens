@@ -30,7 +30,7 @@ const LENS = (args: string): CommandRunInput => ({
 const TURN = { turnId: 't1', durationMs: 1000, isAborted: false, model: 'haiku' } as const
 
 // 엔진 자리를 대신하는 하단 응답들, Haiku 는 호출마다 번호를 붙인 목적 문장을 돌려준다
-function engine(on: On, haiku: { prompts: string[]; systems?: string[]; fail?: boolean } = { prompts: [] }) {
+function engine(on: On, haiku: { prompts: string[]; systems?: string[]; tag?: string; fail?: boolean } = { prompts: [] }) {
   const clock = mock.clock(on)
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
@@ -51,7 +51,7 @@ function engine(on: On, haiku: { prompts: string[]; systems?: string[]; fail?: b
     if (haiku.fail) return { value: { isAnswered: false as const, reason: 'empty-reply' as const, usage: USAGE } }
     const text = e.system?.includes('요약') || e.system?.includes('summarize') ? '원인은 포맷 함수의 반올림' : `목적 문장 ${haiku.prompts.length}`
     return { value: { isAnswered: true as const, text: `생각 중
-<s>${text}</s>`, usage: USAGE } }
+${haiku.tag ? `<c>${haiku.tag}</c>` : ''}<s>${text}</s>`, usage: USAGE } }
   })
   return {
     settle: () => clock.settle(),
@@ -74,7 +74,7 @@ test('a subagent shows its purpose sentence, never its raw actions', async ($, o
 
   let ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await texts(ui, /^▶ \d/)).toBeUndefined()
-  expect(await texts(ui, /출력 경로 조사/)).toBe('  ▶ 출력 경로 조사 · 0:00')
+  expect(await texts(ui, /출력 경로 조사/)).toBe('  ▶ [read] 출력 경로 조사 · 0:00')
   expect(await texts(ui, /목적 문장/)).toBe('    목적 문장 1')
   expect(haiku.prompts[0]).toContain('<data>')
   expect(haiku.prompts[0]).toContain('QATAB-806 관측값 출력 경로를 조사해라')
@@ -91,7 +91,7 @@ test('a subagent shows its purpose sentence, never its raw actions', async ($, o
   expect(haiku.prompts[1]).toContain('Grep formatObservation')
   expect(await texts(ui, /목적 문장/)).toBe('    목적 문장 2')
   expect(await texts(ui, /formatObservation|Grep|읽는 중/)).toBeUndefined()
-  expect(await texts(ui, /출력 경로 조사/)).toBe('  ▶ 출력 경로 조사 · 0:21')
+  expect(await texts(ui, /출력 경로 조사/)).toBe('  ▶ [read] 출력 경로 조사 · 0:21')
   expect(await texts(ui, /engine/)).toBe('engine')
   await ui.unmount()
 })
@@ -104,7 +104,7 @@ test('a step that takes long gets a dim stall note', async ($, on) => {
   await clock.advance(3 * 60_000 + 5_000)
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await texts(ui, /⏳/)).toBe('    ⏳ 3:05')
-  expect(await texts(ui, /출력 경로 조사/)).toBe('  ▶ 출력 경로 조사 · 3:05')
+  expect(await texts(ui, /출력 경로 조사/)).toBe('  ▶ [read] 출력 경로 조사 · 3:05')
   await ui.unmount()
 })
 
@@ -127,8 +127,8 @@ test('a finished agent shows the reason it ended and a summary', async ($, on) =
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await texts(ui, /^▶ \d/)).toBeUndefined()
   expect(await texts(ui, /원인은/)).toBe('    → 원인은 포맷 함수의 반올림')
-  expect(await texts(ui, /오류 난 작업/)).toBe('  ✗ 오류 난 작업 · 0:00')
-  expect(await texts(ui, /중지한 작업/)).toMatch(/^ {2}■ 중지한 작업/)
+  expect(await texts(ui, /오류 난 작업/)).toBe('  ✗ [read] 오류 난 작업 · 0:00')
+  expect(await texts(ui, /중지한 작업/)).toBe('  ■ [read] 중지한 작업 · 0:00')
   await ui.unmount()
 })
 
@@ -140,7 +140,7 @@ test('without Haiku the result falls back to the first content line', async ($, 
   let ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   // Haiku 가 답하지 못하면 '파악하는 중' 을 계속 띄우지 않는다
   expect(await texts(ui, /파악하는 중/)).toBeUndefined()
-  expect(await texts(ui, /출력 경로 조사/)).toBe('  ▶ 출력 경로 조사 · 0:00')
+  expect(await texts(ui, /출력 경로 조사/)).toBe('  ▶ [read] 출력 경로 조사 · 0:00')
   await ui.unmount()
 
   await $.turn.complete({ ...TURN, agentId: 'a1', answer: '## 완료\n\n1. **완료**: `A.java:1` 수정', reason: 'answer' })
@@ -167,7 +167,7 @@ test('a background shell ends by its notification and clears only on a person\'s
     wait: false,
   })
   let ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect(await texts(ui, /service-cmp 테스트/)).toBe('  ✗ $ service-cmp 테스트 · 0:00')
+  expect(await texts(ui, /service-cmp 테스트/)).toBe('  ✗ [test] $ service-cmp 테스트 · 0:00')
   expect(await texts(ui, /→/)).toBe('    → exit 1')
   await ui.unmount()
 
@@ -221,9 +221,9 @@ test('secrets and control characters never reach the band or Haiku', async ($, o
   await clock.settle()
   // 띠는 14줄까지라 13개 셸 전부를 /lens 로 확인한다
   const listed = (await $.command.run(LENS(''))).text
-  expect(listed).toContain('▶ $ title red · 0:00')
-  expect(listed).toContain('▶ $ rg · 0:00')
-  expect(listed).toContain('▶ $ aws · 0:00')
+  expect(listed).toContain('▶ [run] $ title red · 0:00')
+  expect(listed).toContain('▶ [read] $ rg · 0:00')
+  expect(listed).toContain('▶ [run] $ aws · 0:00')
   for (const hidden of ['formatObservation', 'glpat', 's3cret', 'abcd1234', 'evil']) expect(listed).not.toContain(hidden)
 })
 
@@ -246,7 +246,7 @@ test('a workflow child shows its own title before its purpose, and a shell ends 
 
   await $.turn.complete({ ...TURN, agentId: 'a1', answer: 'ok', reason: 'answer' })
   await clock.settle()
-  expect((await $.command.run(LENS(''))).text).toContain('■ $ unit tests · 0:00')
+  expect((await $.command.run(LENS(''))).text).toContain('■ [test] $ unit tests · 0:00')
 })
 
 test('a quiet shell output shows how long it has been unchanged', async ($, on) => {
@@ -320,7 +320,7 @@ test('/lens lists tasks briefly and clear says how many it removed', async ($, o
   await $.turn.complete({ ...TURN, agentId: 'a1', answer: 'ok', reason: 'answer' })
   await clock.settle()
   const list = (await $.command.run(LENS(''))).text
-  expect(list).toBe('✓ 출력 경로 조사 · 0:00\n    → 원인은 포맷 함수의 반올림')
+  expect(list).toBe('✓ [read] 출력 경로 조사 · 0:00\n    → 원인은 포맷 함수의 반올림')
   expect((await $.command.run(LENS('clear'))).text).toBe('✓ −1')
 })
 
@@ -344,7 +344,7 @@ test('a fixed language option tells Haiku which language to write in', { options
   await clock.advance(72_000)
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await texts(ui, /^▶ \d/)).toBeUndefined()
-  expect(await texts(ui, /出力|출력 경로 조사/)).toBe('  ▶ 출력 경로 조사 · 1:12')
+  expect(await texts(ui, /出力|출력 경로 조사/)).toBe('  ▶ [read] 출력 경로 조사 · 1:12')
   expect(systems.some(s => s.endsWith('Write in Japanese.'))).toBe(true)
   await ui.unmount()
 })
@@ -371,5 +371,50 @@ test('a long line wraps to two rows instead of being cut', async ($, on) => {
   expect(first?.startsWith('    → 알람 관측값이')).toBe(true)
   expect(first?.endsWith('…')).toBe(false)
   expect(await texts(ui, /^ {4}(?!→).*달라서였습니다$/)).toBeDefined()
+  await ui.unmount()
+})
+
+test('the kind tag comes from Haiku when it gives one, and from the tools otherwise', async ($, on) => {
+  const haiku = { prompts: [] as string[], tag: 'plan' }
+  const clock = engine(on, haiku)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.agent.spawn(SPAWN)
+  await clock.settle()
+  let ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await texts(ui, /출력 경로 조사/)).toBe('  ▶ [plan] 출력 경로 조사 · 0:00')
+  await ui.unmount()
+
+  haiku.tag = ''
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 'toolu_b', description: '문서 정리' })
+  await $.tool.call({ tool: 'Edit', file_path: 'C:\\repo\\README.md', old_string: 'a', new_string: 'b', agentId: 'a2' })
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 'toolu_c', description: '코드 수정' })
+  await $.tool.call({ tool: 'Edit', file_path: 'C:\\repo\\A.java', old_string: 'a', new_string: 'b', agentId: 'a3' })
+  await clock.settle()
+  ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await texts(ui, /문서 정리/)).toBe('  ▶ [docs] 문서 정리 · 0:00')
+  expect(await texts(ui, /코드 수정/)).toBe('  ▶ [code] 코드 수정 · 0:00')
+  await ui.unmount()
+})
+
+test('starting to edit files switches the tag right away, before Haiku refreshes', async ($, on) => {
+  const haiku = { prompts: [] as string[], tag: 'plan' }
+  const clock = engine(on, haiku)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.agent.spawn(SPAWN)
+  await clock.settle()
+  let ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await texts(ui, /출력 경로 조사/)).toBe('  ▶ [plan] 출력 경로 조사 · 0:00')
+  await ui.unmount()
+
+  await $.tool.call({ tool: 'Edit', file_path: 'C:\repo\A.java', old_string: 'a', new_string: 'b', agentId: 'a1' })
+  await clock.settle()
+  ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await texts(ui, /출력 경로 조사/)).toBe('  ▶ [code] 출력 경로 조사 · 0:00')
+  await ui.unmount()
+
+  await $.tool.call({ tool: 'Write', file_path: 'C:\repo\docs\guide.md', content: 'x', agentId: 'a1' })
+  await clock.settle()
+  ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await texts(ui, /출력 경로 조사/)).toBe('  ▶ [docs] 출력 경로 조사 · 0:00')
   await ui.unmount()
 })

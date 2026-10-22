@@ -15,6 +15,8 @@ export type Task = {
   endedAt?: number
   // 무슨 목적으로 무엇을 하는지 한 문장
   purpose?: string
+  // 지금 하는 일의 종류 (read · code · plan · docs · test · run), Haiku 가 정한 값
+  tag?: string
   // 마지막으로 진행이 보인 시각, 걸림 표시에 쓴다
   activeAt: number
   output?: string
