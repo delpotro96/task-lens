@@ -30,6 +30,10 @@ A real capture from a Korean session, with six tasks running at once:
 
 ![task-lens in a Korean session](docs/band-real-ko.png)
 
+## VS Code
+
+The band above the prompt is drawn in the terminal and the desktop app. In the VS Code extension, task-lens shows the same lines in a `task-lens` pane instead: it opens when a background task starts, and `/lens` opens it on demand. It closes when the finished tasks are cleared.
+
 ## Commands
 
 - `/lens` lists every tracked task with its purpose or result.
@@ -54,6 +58,8 @@ claude plugin install task-lens --marketplace delpotro96/task-lens
 ```
 
 In the desktop app: click + next to the prompt box, then Plugins, Add marketplace with `delpotro96/task-lens`, then Add plugin.
+
+In VS Code, `/plugin` is not available inside the Claude Code panel. Run the shell command above in a terminal, then restart Claude Code in VS Code.
 
 Answer `y` to add the marketplace, then pick a scope.
 

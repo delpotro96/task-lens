@@ -418,3 +418,29 @@ test('starting to edit files switches the tag right away, before Haiku refreshes
   expect(await texts(ui, /출력 경로 조사/)).toBe('  ▶ [docs] 출력 경로 조사 · 0:00')
   await ui.unmount()
 })
+
+test('in VS Code the same lines open in a pane, since the band is not drawn there', async ($, on) => {
+  const clock = engine(on)
+  const opened: string[] = []
+  on('session.surfaces', () => ({ value: ['vscode' as const] }))
+  on('ui.open', (_, e) => {
+    opened.push(e.id)
+    return { value: { isPlaced: true as const } }
+  })
+  on('ui.close', () => ({ value: undefined }))
+  await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+  await $.agent.spawn(SPAWN)
+  await clock.settle()
+  expect(opened).toContain('task-lens')
+
+  const pane = await $.ui.mount({
+    plugin: 'task-lens',
+    component: 'Pane',
+    requestId: 'task-lens',
+    surface: 'vscode',
+    props: { title: 'task-lens', isFocused: false, bodyColumns: 80, placement: 'inline', scroll: { offset: 0, bodyRows: 20 }, view: {} },
+  })
+  expect((await pane.find({ type: 'Text', text: /출력 경로 조사/ }))?.text).toBe('  ▶ [read] 출력 경로 조사 · 0:00')
+  expect((await pane.find({ type: 'Text', text: /목적 문장/ }))?.text).toBe('    목적 문장 1')
+  await pane.unmount()
+})

@@ -282,9 +282,23 @@ function add($: EngineInterface, task: Task) {
   })
 }
 
+// VS Code 는 프롬프트 위 띠를 그리지 않으므로 같은 내용을 Pane 으로 연다
+const PANE = 'task-lens'
+let paneMode = false
+
+async function openPane($: EngineInterface) {
+  if (!paneMode) return
+  try {
+    await $.ui.open({ id: PANE, title: 'task-lens' })
+  } catch {
+    // 열 수 없는 화면이면 /lens 목록으로 볼 수 있다
+  }
+}
+
 async function start($: EngineInterface, fields: Pick<Task, 'id' | 'kind' | 'title' | 'type'> & Partial<Task>) {
   const now = await $.clock.now()
   await add($, { state: 'running', startedAt: now, activeAt: now, ...fields })
+  void openPane($)
 }
 
 async function finish($: EngineInterface, id: string, state: TaskState, result?: string) {
@@ -297,6 +311,13 @@ async function prune($: EngineInterface) {
   const after = await update($, tasks, list => list.filter(t => alive(t, list)))
   const kept = new Set(after.map(t => t.id))
   for (const t of before) if (!kept.has(t.id)) forget(t.id)
+  if (paneMode && after.length === 0 && before.length > 0) {
+    try {
+      await $.ui.close({ id: PANE })
+    } catch {
+      // 이미 닫혀 있으면 그대로 둔다
+    }
+  }
   return before.length - after.length
 }
 
@@ -682,6 +703,7 @@ export const register: Register = (on, options) => {
     timer = $.clock.every(1000, () => void onTick($).catch(() => undefined))
     // 리로드로 잃은 목적 문장 예약을 되살린다
     for (const t of await read($, tasks)) if (t.state === 'running' && !t.purpose) purposeDue.add(t.id)
+    paneMode = e.surface === 'vscode' || (await $.session.surfaces().catch((): readonly string[] => [])).includes('vscode')
     try {
       await $.command.register({ name: 'lens', description: 'Background tasks at a glance (/lens clear removes finished ones)', immediate: true })
     } catch {
@@ -808,6 +830,8 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'lens' }, async ($, e) => {
     if ((e.args ?? '').trim() === 'clear') return { text: `✓ −${await prune($)}` }
+    // 사람이 친 명령이라 Pane 은 화면 폭과 상관없이 열린다
+    await openPane($)
     const list = await read($, tasks)
     if (list.length === 0) return { text: '∅' }
     const now = await $.clock.now()
@@ -820,6 +844,31 @@ export const register: Register = (on, options) => {
     if (lastHaikuError) lines.push('', `Haiku: ${lastHaikuError}`)
     return { text: lines.join('\n') }
   }).catch(() => ({ text: 'task-lens: ✗' }))
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const list = await read($, tasks)
+    await read($, tick)
+    const { Box, Text } = $.ui.resolve(e)
+    if (list.length === 0) return <Text dimColor>∅</Text>
+    const now = await $.clock.now()
+    const room = Math.max(2, e.props.scroll.bodyRows)
+    const blocks = topsOf(list).map(t => blockOf(t, list, now, e.props.bodyColumns))
+    const { lines, hidden } = layout(blocks, room)
+    return (
+      <Box flexDirection="column">
+        {lines.map(l => (
+          <Text color={l.color} dimColor={l.dim} wrap="truncate-end">
+            {l.text}
+          </Text>
+        ))}
+        {hidden > 0 && (
+          <Text dimColor wrap="truncate-end">
+            {`  ${SYM.more(hidden)}`}
+          </Text>
+        )}
+      </Box>
+    )
+  })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const list = await read($, tasks)
