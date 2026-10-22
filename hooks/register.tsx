@@ -799,29 +799,14 @@ export const register: Register = (on, options) => {
 
     const { Box, Text } = $.ui.resolve(e)
     const now = await $.clock.now()
-    const tops = topsOf(list)
-    const running = tops.filter(t => t.state === 'running').length
-    const failed = tops.filter(t => t.state === 'failed').length
-    const done = tops.filter(t => t.state === 'completed').length
-    const killed = tops.filter(t => t.state === 'killed').length
-    // 모두 끝나면 머리줄 없이 결과 줄만 남긴다
-    const header: Line | undefined =
-      running > 0
-        ? { text: [`▶ ${running}`, done ? `✓ ${done}` : '', failed ? `✗ ${failed}` : '', killed ? `■ ${killed}` : ''].filter(Boolean).join('  ') }
-        : undefined
-
+    // 줄마다 ▶ ✓ ✗ 표시가 있으므로 개수 머리줄은 두지 않는다
     const room = Math.max(2, Math.min(BAND_MAX_ROWS, e.props.maxRows))
-    const blocks = tops.map(t => blockOf(t, list, now, e.props.bodyColumns))
-    const { lines, hidden } = layout(blocks, header ? room - 1 : room)
+    const blocks = topsOf(list).map(t => blockOf(t, list, now, e.props.bodyColumns))
+    const { lines, hidden } = layout(blocks, room)
 
     return (
       <Box flexDirection="column">
         <Box flexDirection="column">
-          {header && (
-            <Text bold wrap="truncate-end">
-              {header.text}
-            </Text>
-          )}
           {lines.map(l => (
             <Text color={l.color} dimColor={l.dim} wrap="truncate-end">
               {l.text}
