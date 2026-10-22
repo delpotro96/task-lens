@@ -1,0 +1,11 @@
+{
+  "name": "task-lens",
+  "owner": { "name": "delpotro96" },
+  "plugins": [
+    {
+      "name": "task-lens",
+      "source": "./",
+      "description": "Shows what each subagent, background shell and workflow is doing and why, as one sentence in a band above the prompt"
+    }
+  ]
+}
