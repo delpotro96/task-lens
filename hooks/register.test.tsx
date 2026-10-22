@@ -50,7 +50,8 @@ function engine(on: On, haiku: { prompts: string[]; systems?: string[]; fail?: b
     haiku.systems?.push(e.system ?? '')
     if (haiku.fail) return { value: { isAnswered: false as const, reason: 'empty-reply' as const, usage: USAGE } }
     const text = e.system?.includes('요약') || e.system?.includes('summarize') ? '원인은 포맷 함수의 반올림' : `목적 문장 ${haiku.prompts.length}`
-    return { value: { isAnswered: true as const, text, usage: USAGE } }
+    return { value: { isAnswered: true as const, text: `생각 중
+<s>${text}</s>`, usage: USAGE } }
   })
   return {
     settle: () => clock.settle(),
