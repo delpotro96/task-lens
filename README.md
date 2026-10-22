@@ -2,21 +2,7 @@
 
 A Claude Code mod that shows what your subagents, background shells and workflows are doing, and why, in a band above the prompt. No side panel: it stays in the same terminal.
 
-```
-  ▶ [read] Find VM deletion flow · 0:13
-    Tracing the VM delete flow through the code
-  ▶ [plan] Plan Excel export refactor · 0:41
-    Designing a shared export helper
-  ▶ [code] Fix alarm formatter · 1:02
-    Changing the rounding to fix the alarm values
-    ⏳ 1:10
-  ▶ [test] $ gradlew test · 2:10
-    Checking the fix does not break existing tests
-  ▶ review · 3/7 · 4:02
-    find:logic · Looking for state-change bugs
-  ✗ [run] $ lint · 0:40
-    → exit 1
-```
+![task-lens band above the Claude Code prompt](docs/band.png)
 
 ## What it shows
 
@@ -39,6 +25,10 @@ A Claude Code mod that shows what your subagents, background shells and workflow
 ## Language
 
 Purpose and result sentences follow the language of your last prompt (Korean, English, Japanese, and so on). To always use one language, set the plugin's `language` option to a language name, for example `Japanese`. The default is `auto`.
+
+A real capture from a Korean session, with six tasks running at once:
+
+![task-lens in a Korean session](docs/band-real-ko.png)
 
 ## Commands
 
