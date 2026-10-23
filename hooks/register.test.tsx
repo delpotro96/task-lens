@@ -445,3 +445,14 @@ test('in VS Code the same lines open in a pane, since the band is not drawn ther
   expect((await pane.find({ type: 'Text', text: /목적 문장/ }))?.text).toBe('    목적 문장 1')
   await pane.unmount()
 })
+
+test('a background PowerShell command is tracked like a Bash one', async ($, on) => {
+  const clock = engine(on)
+  clock.tool(() => ({ result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 'ps1' } }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'PowerShell', command: 'Invoke-Pester', description: 'unit tests', run_in_background: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await texts(ui, /unit tests/)).toBe('  ▶ [test] $ unit tests · 0:00')
+  await ui.unmount()
+})

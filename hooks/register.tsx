@@ -381,8 +381,10 @@ const DOC_FILE = /\.(md|mdx|txt|rst|adoc)\b/i
 const ruleTag = (t: Task): Tag | undefined => {
   if (t.kind === 'workflow') return undefined
   if (t.kind === 'shell') {
+    // 명령과 셸 설명을 함께 본다 (Invoke-Pester 처럼 이름만으로는 테스트인지 모르는 명령이 있다)
     const command = plain(t.brief ?? t.title)
-    return TEST_CMD.test(command) ? 'test' : READ_CMD.test(command.trim()) ? 'read' : 'run'
+    if (TEST_CMD.test(command) || TEST_CMD.test(plain(t.title))) return 'test'
+    return READ_CMD.test(command.trim()) ? 'read' : 'run'
   }
   const recent = inputs.get(t.id)?.recent ?? []
   const edits = recent.filter(r => /^(Edit|Write|MultiEdit|NotebookEdit) /.test(r))
@@ -529,6 +531,21 @@ async function onSpawn($: EngineInterface, agentId: string, e: SpawnFacts) {
 }
 
 type ShellFacts = { agentId?: string; description?: string; command: string; id: string; text?: string; endsWithParent?: boolean }
+
+// Bash · PowerShell 호출에서 백그라운드 셸 정보를 꺼낸다, 백그라운드가 아니면 undefined
+const shellFacts = (input: Record<string, unknown>, result: Record<string, unknown> | undefined, text?: string): ShellFacts | undefined => {
+  const id = result?.backgroundTaskId
+  if (typeof id !== 'string' || !id) return undefined
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
+  return {
+    agentId: str(input.agentId),
+    description: str(input.description),
+    command: str(input.command) ?? '',
+    id,
+    text,
+    endsWithParent: result?.backgroundEndsWithFinalResponse === true,
+  }
+}
 
 async function trackShell($: EngineInterface, call: ShellFacts) {
   const parent = await find($, call.agentId)
@@ -772,27 +789,27 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => next(e))
 
   // 기록은 도구 실행을 기다리게 하지 않도록 떼어서 돌린다
-  on('tool.call', ($, e, next) => {
+  // PowerShell 은 타입 정의가 없는 엔진 버전이 있어 입력과 결과를 값으로 읽는다
+  on('tool.call', async ($, e, next) => {
+    const input = e as unknown as Record<string, unknown>
     if (e.agentId) {
-      const action = safe(describeCall(e.tool, e as unknown as Record<string, unknown>), 120)
+      const action = safe(describeCall(e.tool, input), 120)
       void recordCall($, e.agentId, action).catch(() => undefined)
     }
-    return next(e)
+    const tool: string = e.tool
+    if (tool !== 'PowerShell') return next(e)
+    const ran = await next(e)
+    const result = ran.deny === undefined && !ran.isError ? (ran.result as Record<string, unknown> | undefined) : undefined
+    const shell = shellFacts(input, result, ran.text)
+    if (shell) await trackShell($, shell)
+    return ran
   }).catch(($, e, next) => next(e))
 
-  on('tool.call', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const ran = await next(e)
-    const result = ran.deny === undefined && !ran.isError ? ran.result : undefined
-    if (result?.backgroundTaskId) {
-      await trackShell($, {
-        agentId: e.agentId,
-        description: e.description,
-        command: e.command,
-        id: result.backgroundTaskId,
-        text: ran.text,
-        endsWithParent: result.backgroundEndsWithFinalResponse,
-      })
-    }
+    const result = ran.deny === undefined && !ran.isError ? (ran.result as unknown as Record<string, unknown>) : undefined
+    const shell = shellFacts(e as unknown as Record<string, unknown>, result, ran.text)
+    if (shell) await trackShell($, shell)
     return ran
   }).catch(($, e, next) => next(e))
 
