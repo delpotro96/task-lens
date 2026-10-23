@@ -200,6 +200,8 @@ test('secrets and control characters never reach the band or Haiku', async ($, o
     ['AWS_SECRET_ACCESS_KEY=abcd1234 aws s3 ls', 'abcd1234'],
     ['sshpass -p Hunter2pw ssh host', 'Hunter2pw'],
     ['docker login -u me -p DockPw77 registry', 'DockPw77'],
+    ["kubectl --token 'opaque-credential-123' get pods", 'opaque-credential-123'],
+    ['psql --password="Pg Secret 9" -h db', 'Pg Secret 9'],
     ['curl -H "Authorization: Basic dXNlcjpwYXNz" h', 'dXNlcjpwYXNz'],
   ] as const
   for (const [command] of leaks) await $.tool.call({ tool: 'Bash', command, run_in_background: true })
@@ -455,4 +457,25 @@ test('a background PowerShell command is tracked like a Bash one', async ($, on)
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await texts(ui, /unit tests/)).toBe('  ▶ [test] $ unit tests · 0:00')
   await ui.unmount()
+})
+
+test('the VS Code pane shows every task instead of folding the rest', async ($, on) => {
+  let n = 0
+  const clock = engine(on)
+  clock.tool(() => ({ result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: `p${++n}` } }))
+  on('session.surfaces', () => ({ value: ['vscode' as const] }))
+  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  await $.session.start({ cwd: '/', surface: 'vscode', isInteractive: true })
+  for (let i = 1; i <= 6; i++) await $.tool.call({ tool: 'Bash', command: 'x', description: `job${i}`, run_in_background: true })
+  await clock.settle()
+  const pane = await $.ui.mount({
+    plugin: 'task-lens',
+    component: 'Pane',
+    requestId: 'task-lens',
+    surface: 'vscode',
+    props: { title: 'task-lens', isFocused: false, bodyColumns: 80, placement: 'inline', scroll: { offset: 0, bodyRows: 4 }, view: {} },
+  })
+  expect((await pane.find({ type: 'Text', text: /job6/ }))?.text).toBe('  ▶ [run] $ job6 · 0:00')
+  expect(await pane.find({ type: 'Text', text: /\+\d …/ })).toBeUndefined()
+  await pane.unmount()
 })
