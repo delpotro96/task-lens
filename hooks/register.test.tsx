@@ -357,6 +357,7 @@ test('auto language follows the last prompt the person sent', async ($, on) => {
   await $.agent.spawn(SPAWN)
   await clock.settle()
   expect(haiku.prompts[0]).toContain('<lang-sample>\nこのバグを調べて\n</lang-sample>')
+  expect(haiku.prompts[0]).toContain("Person's latest request: このバグを調べて")
 })
 
 test('a long line wraps to two rows instead of being cut', async ($, on) => {
